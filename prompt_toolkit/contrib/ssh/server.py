@@ -3,7 +3,7 @@ Utility for running a prompt_toolkit application in an asyncssh server.
 """
 import asyncio
 import traceback
-from typing import Awaitable, Callable, Optional, TextIO, cast
+from typing import Any, Awaitable, Callable, Optional, TextIO, cast
 
 import asyncssh
 
@@ -21,19 +21,19 @@ class PromptToolkitSSHSession(asyncssh.SSHServerSession):
     ) -> None:
         self.interact = interact
         self.interact_task: Optional[asyncio.Task[None]] = None
-        self._chan = None
+        self._chan: Optional[Any] = None
         self.app_session: Optional[AppSession] = None
 
         # PipInput object, for sending input in the CLI.
         # (This is something that we can use in the prompt_toolkit event loop,
         # but still write date in manually.)
         self._input = create_pipe_input()
-        self._output = None
+        self._output: Optional[Vt100_Output] = None
 
         # Output object. Don't render to the real stdout, but write everything
         # in the SSH channel.
         class Stdout:
-            def write(s, data):
+            def write(s, data: str) -> None:
                 try:
                     if self._chan is not None:
                         self._chan.write(data.replace("\n", "\r\n"))
@@ -43,12 +43,13 @@ class PromptToolkitSSHSession(asyncssh.SSHServerSession):
             def isatty(s) -> bool:
                 return True
 
-            def flush(s):
+            def flush(s) -> None:
                 pass
 
             @property
-            def encoding(s):
-                return self._chan._orig_chan.get_encoding()[0]
+            def encoding(s) -> str:
+                assert self._chan is not None
+                return str(self._chan._orig_chan.get_encoding()[0])
 
         self.stdout = cast(TextIO, Stdout())
 
@@ -62,7 +63,7 @@ class PromptToolkitSSHSession(asyncssh.SSHServerSession):
             width, height, pixwidth, pixheight = self._chan.get_terminal_size()
             return Size(rows=height, columns=width)
 
-    def connection_made(self, chan):
+    def connection_made(self, chan: Any) -> None:
         self._chan = chan
 
     def shell_requested(self) -> bool:
@@ -98,13 +99,13 @@ class PromptToolkitSSHSession(asyncssh.SSHServerSession):
                 self._input.close()
 
     def terminal_size_changed(
-        self, width: int, height: int, pixwidth, pixheight
+        self, width: int, height: int, pixwidth: object, pixheight: object
     ) -> None:
         # Send resize event to the current application.
         if self.app_session and self.app_session.app:
             self.app_session.app._on_resize()
 
-    def data_received(self, data, datatype):
+    def data_received(self, data: str, datatype: object) -> None:
         self._input.send_text(data)
 
 
